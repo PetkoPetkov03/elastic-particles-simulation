@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
+#include <string.h>
 #include "../includes/raylib/raylib.h"
 #include <math.h>
 #include <stdbool.h>
@@ -109,16 +110,6 @@ bool CirclesNested(Vector2 a, Vector2 b)
     return distance > fabs(c1-c2);
 }
 
-void CheckInitialCollision(Vector2* position, size_t cSize)
-{
-    for(size_t i = 0; i < cSize; i++) {
-        Vector2 cPartPosition = {0};
-        ConvertParticleToParticleVector(&cPartPosition, particles[i]);
-
-
-    }
-}
-
 void ConvertParticleVectorToParticle(Particle **part, Vector2 vector)
 {
     (*part)->centerX = vector.x;
@@ -165,41 +156,121 @@ float ypos[PARTICLE_NUMS])
         part->rad = (rand() % MAX_PRAD) + 4;
         part->mass = part->rad * PI;
 
-        printf("Particle %i mass %f\n", i, part->mass);
-
-        Vector2 partVec = {0};
-        ConvertParticleToParticleVector(&partVec, part);
-        CheckInitialCollision(&partVec, i);
-        ConvertParticleVectorToParticle(&part, partVec);
         particles[i] = part;
     }
+}
+
+void AbideBorder(size_t i)
+{
+    if((particles[i]->centerX + particles[i]->rad) > WIDTH) {
+        particles[i]->centerX = WIDTH - particles[i]->rad;
+        particles[i]->vX *= -1;
+    }
+
+    if((particles[i]->centerX - particles[i]->rad) < 0) {
+        particles[i]->centerX = 0 + particles[i]->rad;
+        particles[i]->vX *= -1;
+    }
+
+    if((particles[i]->centerY + particles[i]->rad) > HEIGHT) {
+        particles[i]->centerY = HEIGHT - particles[i]->rad;
+        particles[i]->vY *= -1;
+    }
+
+    if((particles[i]->centerY - particles[i]->rad) < 0) {
+        particles[i]->centerY = 0 + particles[i]->rad;
+        particles[i]->vY *= -1;
+    }
+}
+
+void ParticleMove(size_t i)
+{
+    particles[i]->centerX += particles[i]->vX;
+    particles[i]->centerY += particles[i]->vY;
+}
+
+typedef struct {
+    void* first;
+    void* second;
+} Pair;
+
+typedef struct {
+    float distance;
+    float r1;
+    float r2;
+} CheckResult;
+
+Pair MakePair(const void* first, size_t first_size,
+const void* second, size_t second_size)
+{
+    Pair result;
+
+    result.first = malloc(first_size);
+    result.second = malloc(second_size);
+
+    if(result.first && first_size > 0) {
+        memcpy(result.first, first, first_size);
+    }
+
+    if(result.second && second_size > 0) {
+        memcpy(result.second, second, second_size);
+    }
+
+    return result;
+}
+
+Pair CheckIfParticlesIntersect(size_t i, size_t j)
+{
+    Particle particle1 = *particles[i];
+    Particle particle2 = *particles[j];
+
+    float r1 = pow((particle2.centerX - particle1.centerX), 2);
+    float r2 = pow((particle2.centerY - particle1.centerY), 2);
+    float distance = sqrt(r1 + r2);
+
+    float absOfRadi = fabs(particle1.rad - particle2.rad);
+    float sum = particle1.rad + particle2.rad;
+
+    bool check = absOfRadi < distance && distance < sum;
+
+    CheckResult cResult = {
+        .distance = distance,
+        .r1 = particle1.rad,
+        .r2 = particle2.rad
+    };
+
+    Pair result = MakePair(&check, sizeof(check), &cResult, sizeof(cResult));
+
+    return result;
+}
+
+void CorrectParticles(CheckResult cr, size_t i, size_t j)
+{
+    Particle *particle1 = particles[i];
+    Particle *particle2 = particles[j];
+
+    float a =
+    (pow(cr.r1, 2) - pow(cr.r2, 2) + pow(cr.distance, 2)) / 2*cr.distance;
+
+    float h = sqrt(pow(cr.r1, 2) - pow(a, 2));
 }
 
 void UpdateParticles()
 {
     for(size_t i = 0; i < PARTICLE_NUMS; i++) {
-        if((particles[i]->centerX + particles[i]->rad) > WIDTH) {
-            particles[i]->centerX = WIDTH - particles[i]->rad;
-            particles[i]->vX *= -1;
-        }
+        AbideBorder(i);
+        for(size_t j = 0; j < PARTICLE_NUMS; j++) {
+            if(i == j) {
+                continue;
+            }
 
-        if((particles[i]->centerX - particles[i]->rad) < 0) {
-            particles[i]->centerX = 0 + particles[i]->rad;
-            particles[i]->vX *= -1;
+            Pair result = CheckIfParticlesIntersect(i, j);
+            if(*(bool*)(result.first)) {
+                CorrectParticles(*(CheckResult*)result.second, i, j);
+                printf("Particle %ld and Particle %ld intersect", i , j);
+            }
         }
-
-        if((particles[i]->centerY + particles[i]->rad) > HEIGHT) {
-            particles[i]->centerY = HEIGHT - particles[i]->rad;
-            particles[i]->vY *= -1;
-        }
-
-        if((particles[i]->centerY - particles[i]->rad) < 0) {
-            particles[i]->centerY = 0 + particles[i]->rad;
-            particles[i]->vY *= -1;
-        }
-
-        particles[i]->centerX += particles[i]->vX;
-        particles[i]->centerY += particles[i]->vY;
+        ParticleMove(i);
     }
 }
 
@@ -211,6 +282,8 @@ void DrawParticles() {
         ConvertParticleToParticleVector(&particleVector, cPart);
 
         DrawCircleV(particleVector, cPart->rad, RED);
+        DrawText(TextFormat("P%ld", i), cPart->centerX - cPart->rad,
+        cPart->centerY - cPart->rad, cPart->rad*1.5, GREEN);
     }
 }
 
@@ -238,7 +311,8 @@ int main(void)
 
     while(!WindowShouldClose()) {
         BeginDrawing();
-          ClearBackground(WHITE);
+        ClearBackground(WHITE);
+          DrawFPS(WIDTH - 100, 10);
           DrawParticles();
           UpdateParticles();
         EndDrawing();
