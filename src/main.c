@@ -101,21 +101,6 @@ bool CirclesIntersect(Vector2 a, Vector2 b)
     return distance > (c1+c2);
 }
 
-bool CirclesNested(Vector2 a, Vector2 b)
-{
-    float c1 = pow((a.x - a.y), 2);
-    float c2 = pow((b.x - b.y), 2);
-    float distance = sqrt(c1 + c2);
-
-    return distance > fabs(c1-c2);
-}
-
-void ConvertParticleVectorToParticle(Particle **part, Vector2 vector)
-{
-    (*part)->centerX = vector.x;
-    (*part)->centerY = vector.y;
-}
-
 void SpawnParticles(
 float xpos[PARTICLE_NUMS],
 float ypos[PARTICLE_NUMS])
@@ -244,22 +229,76 @@ Pair CheckIfParticlesIntersect(size_t i, size_t j)
     return result;
 }
 
+void AddVectorWNum(Vector2 *a, float b)
+{
+    a->x += b;
+    a->y += b;
+}
+
+Vector2 FindIntersectionPoint(
+const Particle p1,
+const Particle p2,
+float distance,
+float distance_intersection,
+float height)
+{
+    float x1 = p1.centerX;
+    float x2 = p2.centerX;
+    float y1 = p1.centerY;
+    float y2 = p2.centerY;
+    Vector2 P2 = {
+        .x = x1 + distance_intersection*((x2 - x1)/distance),
+        .y = y1 + distance_intersection*((y2 - y1)/distance)
+    };
+
+    Vector2 P3 = {
+        .x = P2.x + height*((y1 - P2.y)/distance),
+        .y = P2.y + height*((x1 - P2.x)/distance)
+    };
+}
+
+Pair FindColinears(Vector2 A, float distance_intersection)
+{
+    Pair result;
+
+
+
+    return result;
+}
+
 void CorrectParticles(CheckResult cr, size_t i, size_t j)
 {
     Particle *particle1 = particles[i];
     Particle *particle2 = particles[j];
 
-    float a =
-    (pow(cr.r1, 2) - pow(cr.r2, 2) + pow(cr.distance, 2)) / 2*cr.distance;
+    float distance = cr.distance;
 
-    float h = sqrt(pow(cr.r1, 2) - pow(a, 2));
+    float r1 = particle1->rad;
+    float r2 = particle2->rad;
+
+    float distance_intersection =
+    pow(r1, 2) - pow(r2, 2) + pow(distance, 2) / (2*distance);
+
+    float height = sqrt(pow(r1, 2) - pow(distance_intersection, 2));
+
+
+    Vector2 ipoint =
+    FindIntersectionPoint(*particle1, *particle2,
+    cr.distance, distance_intersection, height);
+
+    Pair reconstructionPoints = FindColinears(ipoint, distance_intersection);
 }
 
 void UpdateParticles()
 {
+    bool particlesChecked[PARTICLE_NUMS][PARTICLE_NUMS] = {false};
+
     for(size_t i = 0; i < PARTICLE_NUMS; i++) {
         AbideBorder(i);
         for(size_t j = 0; j < PARTICLE_NUMS; j++) {
+            if(particlesChecked[i][j]) {
+                continue;
+            }
             if(i == j) {
                 continue;
             }
@@ -267,7 +306,8 @@ void UpdateParticles()
             Pair result = CheckIfParticlesIntersect(i, j);
             if(*(bool*)(result.first)) {
                 CorrectParticles(*(CheckResult*)result.second, i, j);
-                printf("Particle %ld and Particle %ld intersect", i , j);
+                particlesChecked[i][j] = true;
+                printf("Particle %ld and Particle %ld intersect\n", i , j);
             }
         }
         ParticleMove(i);
