@@ -13,14 +13,12 @@
 
 typedef struct {
     float mass;
-    float centerX;
-    float centerY;
-    float vX;
-    float vY;
+    Vector2 position;
+    Vector2 velocity;
     float rad;
 } Particle;
 
-static Particle** particles;
+static Particle particles[PARTICLE_NUMS];
 
 enum GeneratorType {
     UNIQUE,
@@ -86,10 +84,10 @@ float max
 }
 
 
-void ConvertParticleToParticleVector(Vector2* vec, Particle* part)
+void ConvertParticleToParticleVector(Vector2* vec, Particle part)
 {
-    vec->x = part->centerX;
-    vec->y = part->centerY;
+    vec->x = part.position.x;
+    vec->y = part.position.y;
 }
 
 bool CirclesIntersect(Vector2 a, Vector2 b)
@@ -105,41 +103,31 @@ void SpawnParticles(
 float xpos[PARTICLE_NUMS],
 float ypos[PARTICLE_NUMS])
 {
-    particles = (Particle**)malloc(sizeof(Particle*)*PARTICLE_NUMS);
-
-    if(particles == NULL) {
-        fprintf(stderr, "particles list uninitialized");
-        exit(1);
-    }
+    Particle part = {0};
 
     for(size_t i = 0; i < PARTICLE_NUMS; i++) {
-        Particle* part = (Particle*)malloc(sizeof(Particle));
-
-        if(part == NULL) {
-            fprintf(stderr, "particle %ld uninitialized", i);
-            exit(1);
-        }
-
-        part->centerX = xpos[i];
-        part->centerY = ypos[i];
+        part.position = (Vector2){
+            .x = xpos[i],
+            .y = ypos[i]
+        };
         int dirDeciderX = (rand() % 3) + 1;
         int dirDeciderY = (rand() % 3) + 1;
         bool directionX = dirDeciderX < 2 ? true: false;
         bool directionY = dirDeciderY < 2 ? true: false;
 
         if(directionX) {
-            part->vX = 1;
+            part.velocity.x = 1;
         }else {
-            part->vX = -1;
+            part.velocity.x = -1;
         }
 
         if(directionY) {
-            part->vY = 1;
+            part.velocity.y = 1;
         }else {
-            part->vY = -1;
+            part.velocity.y = -1;
         }
-        part->rad = (rand() % MAX_PRAD) + 4;
-        part->mass = part->rad * PI;
+        part.rad = (rand() % MAX_PRAD) + 4;
+        part.mass = part.rad * PI;
 
         particles[i] = part;
     }
@@ -147,31 +135,31 @@ float ypos[PARTICLE_NUMS])
 
 void AbideBorder(size_t i)
 {
-    if((particles[i]->centerX + particles[i]->rad) > WIDTH) {
-        particles[i]->centerX = WIDTH - particles[i]->rad;
-        particles[i]->vX *= -1;
+    if((particles[i].position.x + particles[i].rad) > WIDTH) {
+        particles[i].position.x = WIDTH - particles[i].rad;
+        particles[i].velocity.x *= -1;
     }
 
-    if((particles[i]->centerX - particles[i]->rad) < 0) {
-        particles[i]->centerX = 0 + particles[i]->rad;
-        particles[i]->vX *= -1;
+    if((particles[i].position.x - particles[i].rad) < 0) {
+        particles[i].position.x = 0 + particles[i].rad;
+        particles[i].velocity.x *= -1;
     }
 
-    if((particles[i]->centerY + particles[i]->rad) > HEIGHT) {
-        particles[i]->centerY = HEIGHT - particles[i]->rad;
-        particles[i]->vY *= -1;
+    if((particles[i].position.y + particles[i].rad) > HEIGHT) {
+        particles[i].position.y = HEIGHT - particles[i].rad;
+        particles[i].velocity.y *= -1;
     }
 
-    if((particles[i]->centerY - particles[i]->rad) < 0) {
-        particles[i]->centerY = 0 + particles[i]->rad;
-        particles[i]->vY *= -1;
+    if((particles[i].position.y - particles[i].rad) < 0) {
+        particles[i].position.y = 0 + particles[i].rad;
+        particles[i].velocity.y *= -1;
     }
 }
 
 void ParticleMove(size_t i)
 {
-    particles[i]->centerX += particles[i]->vX;
-    particles[i]->centerY += particles[i]->vY;
+    particles[i].position.x += particles[i].velocity.x;
+    particles[i].position.y += particles[i].velocity.y;
 }
 
 typedef struct {
@@ -206,11 +194,11 @@ const void* second, size_t second_size)
 
 Pair CheckIfParticlesIntersect(size_t i, size_t j)
 {
-    Particle particle1 = *particles[i];
-    Particle particle2 = *particles[j];
+    Particle particle1 = particles[i];
+    Particle particle2 = particles[j];
 
-    float r1 = pow((particle2.centerX - particle1.centerX), 2);
-    float r2 = pow((particle2.centerY - particle1.centerY), 2);
+    float r1 = pow((particle2.position.x - particle1.position.x), 2);
+    float r2 = pow((particle2.position.y - particle1.position.y), 2);
     float distance = sqrt(r1 + r2);
 
     float absOfRadi = fabs(particle1.rad - particle2.rad);
@@ -242,10 +230,10 @@ float distance,
 float distance_intersection,
 float height)
 {
-    float x1 = p1.centerX;
-    float x2 = p2.centerX;
-    float y1 = p1.centerY;
-    float y2 = p2.centerY;
+    float x1 = p1.position.x;
+    float x2 = p2.position.x;
+    float y1 = p1.position.y;
+    float y2 = p2.position.y;
     Vector2 P2 = {
         .x = x1 + distance_intersection*((x2 - x1)/distance),
         .y = y1 + distance_intersection*((y2 - y1)/distance)
@@ -255,38 +243,53 @@ float height)
         .x = P2.x + height*((y1 - P2.y)/distance),
         .y = P2.y + height*((x1 - P2.x)/distance)
     };
+
+    return P3;
 }
 
-Pair FindColinears(Vector2 A, float distance_intersection)
+void CorrectParticles(const CheckResult cr, const size_t i, const size_t j)
 {
-    Pair result;
-
-
-
-    return result;
-}
-
-void CorrectParticles(CheckResult cr, size_t i, size_t j)
-{
-    Particle *particle1 = particles[i];
-    Particle *particle2 = particles[j];
+    Particle* particle1 = &particles[i];
+    Particle* particle2 = &particles[j];
 
     float distance = cr.distance;
 
     float r1 = particle1->rad;
     float r2 = particle2->rad;
 
-    float distance_intersection =
-    pow(r1, 2) - pow(r2, 2) + pow(distance, 2) / (2*distance);
+    // float distance_intersection =
+    // pow(r1, 2) - pow(r2, 2) + pow(distance, 2) / (2*distance);
 
-    float height = sqrt(pow(r1, 2) - pow(distance_intersection, 2));
+    // float height = sqrt(pow(r1, 2) - pow(distance_intersection, 2));
 
 
-    Vector2 ipoint =
-    FindIntersectionPoint(*particle1, *particle2,
-    cr.distance, distance_intersection, height);
+    // Vector2 ipoint =
+    // FindIntersectionPoint(*particle1, *particle2,
+    // cr.distance, distance_intersection, height);
 
-    Pair reconstructionPoints = FindColinears(ipoint, distance_intersection);
+    // Pair reconstructionPoints =
+    // FindColinears(ipoint, distance_intersection, height);
+
+    Vector2 d = {
+        .x = particle2->position.x - particle1->position.x,
+        .y = particle2->position.y - particle1->position.y
+    };
+
+    float vectorLength = sqrt(pow(d.x, 2) + pow(d.y, 2));
+
+    Vector2 nd = {
+        .x = d.x / vectorLength,
+        .y = d.y / vectorLength
+    };
+
+    Vector2 pr = {
+        .x = nd.x * (r1 + r2),
+        .y = nd.y * (r1 + r2)
+    };
+
+    particle2->position.x = particle1->position.x + pr.x;
+    particle2->position.y = particle1->position.y + pr.y;
+
 }
 
 void UpdateParticles()
@@ -305,8 +308,8 @@ void UpdateParticles()
 
             Pair result = CheckIfParticlesIntersect(i, j);
             if(*(bool*)(result.first)) {
-                CorrectParticles(*(CheckResult*)result.second, i, j);
                 particlesChecked[i][j] = true;
+                CorrectParticles(*(CheckResult*)result.second, i, j);
                 printf("Particle %ld and Particle %ld intersect\n", i , j);
             }
         }
@@ -316,23 +319,15 @@ void UpdateParticles()
 
 void DrawParticles() {
     for(size_t i = 0; i < PARTICLE_NUMS; i++) {
-        Particle* cPart = particles[i];
+        Particle cPart = particles[i];
         Vector2 particleVector = {0};
 
         ConvertParticleToParticleVector(&particleVector, cPart);
 
-        DrawCircleV(particleVector, cPart->rad, RED);
-        DrawText(TextFormat("P%ld", i), cPart->centerX - cPart->rad,
-        cPart->centerY - cPart->rad, cPart->rad*1.5, GREEN);
+        DrawCircleV(particleVector, cPart.rad, RED);
+        DrawText(TextFormat("P%ld", i), cPart.position.x - cPart.rad,
+        cPart.position.y - cPart.rad, cPart.rad*1.5, GREEN);
     }
-}
-
-void DestroyParticles()
-{
-    for(size_t i = 0; i < PARTICLE_NUMS; i++) {
-        free(particles[i]);
-    }
-    free(particles);
 }
 
 int main(void)
@@ -350,7 +345,7 @@ int main(void)
     SpawnParticles(positionsX, positionsY);
 
     while(!WindowShouldClose()) {
-        BeginDrawing();
+       BeginDrawing();
         ClearBackground(WHITE);
           DrawFPS(WIDTH - 100, 10);
           DrawParticles();
@@ -358,7 +353,6 @@ int main(void)
         EndDrawing();
     }
 
-    DestroyParticles();
     CloseWindow();
 
     return 0;
