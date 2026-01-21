@@ -3,12 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../includes/raylib/raylib.h"
+#include "../includes/raylib/raymath.h"
 #include <math.h>
 #include <stdbool.h>
 #define WIDTH 800
 #define HEIGHT 650
 #define PARTICLE_NUMS 50
 #define MAX_PRAD 10
+#define FPS 60
 
 
 typedef struct {
@@ -18,7 +20,7 @@ typedef struct {
     float rad;
 } Particle;
 
-static Particle particles[PARTICLE_NUMS];
+static Particle particles[PARTICLE_NUMS] = {0};
 
 enum GeneratorType {
     UNIQUE,
@@ -192,6 +194,12 @@ const void* second, size_t second_size)
     return result;
 }
 
+void FreePair(Pair p)
+{
+    free(p.first);
+    free(p.second);
+}
+
 Pair CheckIfParticlesIntersect(size_t i, size_t j)
 {
     Particle particle1 = particles[i];
@@ -292,6 +300,61 @@ void CorrectParticles(const CheckResult cr, const size_t i, const size_t j)
 
 }
 
+Vector2 Vector2MultiplyDistance(Vector2 v1, float v2)
+{
+    Vector2 result = {
+        .x = v1.x * v2,
+        .y = v1.y * v2
+    };
+
+    return result;
+}
+
+Vector2 Vector2DivideDistance(Vector2 v1, float v2)
+{
+    Vector2 result = {
+        .x = v1.x / v2,
+        .y = v1.y / v2
+    };
+
+    return result;
+}
+
+void ApplyElasticity(size_t i, size_t j)
+{
+    Particle *p1 = &particles[i];
+    Particle *p2 = &particles[j];
+
+    float m1 = p1->mass;
+    float m2 = p2->mass;
+
+    Vector2 vsub = Vector2Subtract(p1->position, p2->position);
+    float udist = Vector2Distance(p1->position, p2->position);
+
+    Vector2 collision_normal = Vector2DivideDistance(vsub, udist);
+
+    Vector2 velrel = Vector2Subtract(p1->velocity, p2->velocity);
+
+    Vector2 velnorm = Vector2Multiply(velrel, collision_normal);
+
+    if(velnorm.x > 0 || velnorm.y > 0) return;
+
+    float impbase = 1 / m1 + 1 / m2;
+
+    Vector2 impmag = Vector2DivideDistance(
+    Vector2MultiplyDistance(velnorm, 2), impbase
+    );
+
+    Vector2 vmass1 =
+    Vector2Multiply(Vector2DivideDistance(impmag, m1), collision_normal);
+
+    Vector2 vmass2 =
+    Vector2Multiply(Vector2DivideDistance(impmag, m1), collision_normal);
+
+    p1->velocity = Vector2Subtract(p1->velocity, vmass1);
+    p2->velocity = Vector2Add(p1->velocity, vmass2);
+}
+
 void UpdateParticles()
 {
     bool particlesChecked[PARTICLE_NUMS][PARTICLE_NUMS] = {false};
@@ -299,6 +362,7 @@ void UpdateParticles()
     for(size_t i = 0; i < PARTICLE_NUMS; i++) {
         AbideBorder(i);
         for(size_t j = 0; j < PARTICLE_NUMS; j++) {
+            AbideBorder(j);
             if(particlesChecked[i][j]) {
                 continue;
             }
@@ -310,8 +374,11 @@ void UpdateParticles()
             if(*(bool*)(result.first)) {
                 particlesChecked[i][j] = true;
                 CorrectParticles(*(CheckResult*)result.second, i, j);
+                ApplyElasticity(i, j);
                 printf("Particle %ld and Particle %ld intersect\n", i , j);
             }
+
+            FreePair(result);
         }
         ParticleMove(i);
     }
@@ -325,8 +392,10 @@ void DrawParticles() {
         ConvertParticleToParticleVector(&particleVector, cPart);
 
         DrawCircleV(particleVector, cPart.rad, RED);
-        DrawText(TextFormat("P%ld", i), cPart.position.x - cPart.rad,
-        cPart.position.y - cPart.rad, cPart.rad*1.5, GREEN);
+        DrawText(
+          TextFormat("P%ld", i),
+          cPart.position.x - cPart.rad,
+          cPart.position.y - (cPart.rad/2), cPart.rad*1.5, GREEN);
     }
 }
 
@@ -335,7 +404,7 @@ int main(void)
     srand(time(NULL));
     InitWindow(WIDTH, HEIGHT, "Elastic Collision Simulator");
 
-    SetTargetFPS(60);
+    SetTargetFPS(FPS);
 
     float positionsX[PARTICLE_NUMS] = {0};
     float positionsY[PARTICLE_NUMS] = {0};
@@ -346,11 +415,11 @@ int main(void)
 
     while(!WindowShouldClose()) {
        BeginDrawing();
-        ClearBackground(WHITE);
+       ClearBackground(WHITE);
           DrawFPS(WIDTH - 100, 10);
           DrawParticles();
           UpdateParticles();
-        EndDrawing();
+       EndDrawing();
     }
 
     CloseWindow();
